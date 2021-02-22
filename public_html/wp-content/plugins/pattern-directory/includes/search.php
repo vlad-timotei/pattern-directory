@@ -2,27 +2,70 @@
 
 namespace WordPressdotorg\Pattern_Directory\Search;
 use WP_Query;
-//use Jetpack_Search;
 
+/*
+ * Enable Jetpack Search without a formal plan.
+ *
+ * The Pattern Directory has a custom index on WPCOM, similar to the the Plugin Directory.
+ */
+add_filter( 'pre_option_has_jetpack_search_product', '__return_true' );
 
+add_filter( 'option_jetpack_active_modules', __NAMESPACE__ . '\enable_search_module' );
+add_filter( 'jetpack_search_should_handle_query', __NAMESPACE__ . '\should_handle_query', 10, 2 );
 add_filter( 'jetpack_sync_post_meta_whitelist', __NAMESPACE__ . '\sync_pattern_meta' );
 
-// todo convert to named funcs
-// rearrange these functions into an order tha makes sense
+add_action( 'jetpack_search_abort', __NAMESPACE__ . '\log_aborted_queries', 10, 2 );
+add_action( 'failed_jetpack_search_query', __NAMESPACE__ . '\log_failed_queries' );
 
 
-// enable the search module
-add_filter( 'option_jetpack_active_modules', function( $modules ) {
-	// probably only do this for pattern searches specifically, maybe on through rest api too
-	// maybe have an init() function that only registers all the callbacks if ^ conditions are met
+/*
+todo
 
-	// todo why is JS search injected for endpoints like https://api.wordpress.org/patterns/1.0/ ?  it shouldn't be
+do something to disable instant search?
 
+is there a better way to track console errors than tail-f?
+	want to clear screen for each request
+	want text formatted to make it easy to read
+	text-to-columns so things are aligned
+	`lnav` looks ok, maybe the best can do w/out large-scale gui app?
+
+
+ maybe use these
+ jetpack_search_should_handle_query
+ do_search() / search()
+ "WP Core doesn't call the set_found_posts and its filters when filtering posts_pre_query like we do, so need to do these manually."
+ jetpack_search_es_wp_query_args
+ store_query_failure / print_query_failure / store_last_query_info
+ get_search_result()
+ add_post_type_aggregation_to_es_query_builder, also tax, add_es_filters, etc
+ info from https://jetpack.com/support/search/?site=wordpress.org::patterns
+
+
+ * need this stuff from alex's pr?
+ * jetpack_active_modules
+ * option_jetpack_active_modules
+ * jetpack_search_es_wp_query_args
+ * jetpack_search_abort
+ * did_jetpack_search_query
+ *
+
+*/
+
+
+/**
+ * Enable the Search module.
+ *
+ * This has to be done programmatically since the site doesn't have a Jetpack plan.
+ *
+ * @param array $modules
+ *
+ * @return array
+ */
+function enable_search_module( $modules ) {
 	$modules[] = 'search';
 
 	return array_unique( $modules );
-} );
-
+}
 //add_filter( 'jetpack_active_modules', __NAMESPACE__ . 'enable_jetpack_search_module', 9999 );
 // this may be better
 //function enable_jetpack_search_module( $modules ) {
@@ -33,57 +76,55 @@ add_filter( 'option_jetpack_active_modules', function( $modules ) {
 //    return $modules;
 //}// has to be done before plugins_loaded? see https://docs.wpvip.com/technical-references/elasticsearch/integrating-jetpack-search/
 
-// do something to disable instant search?
+/*
+ * worse way?
+ * Make sure the search module is available regardless of Jetpack plan.
+ * This works because search indexes were manually created for w.org.
+ */
+//function jetpack_get_module( $module, $slug ) {
+//	//var_dump($module, $slug);
+//	//			if ( 'search' === $slug && isset( $module[ 'plan_classes' ] ) && !in_array( 'free', $module[ 'plan_classes' ] ) ) {
+//	//		if ( 'Search' !== $module['name'] ) {
+//	// ^ fragile b/c could be renamed in future?
+//	// $slug could be too, but less likely?
+//
+//	if ( 'search.php' !== basename( $slug ) ) {
+//		return $module;
+//	}
+//
+//	$module['plan_classes'][] = 'free';
+//
+//	//var_dump($module, $slug);
+//	return $module;
+//}
 
-// is there a better way to track console errors than tail-f?
-	// want to clear screen for each request
-	// want text formatted to make it easy to read
-	// text-to-columns so things are aligned
-	// `lnav` looks ok, maybe the best can do w/out large-scale gui app?
+//	add_filter( 'jetpack_get_module', __NAMESPACE__ . '\jetpack_get_module', 10, 2 );
+// this won't be active b/c you're calling it manually?
+
 
 /**
- * @param string $reason Reason for Search fallback.
- * @param mixed  $data   Data associated with the request, such as attempted search parameters.
+ * Determine if the search query should be handled by Jetpack/ElasticSearch
+ *
+ * @param bool $handle_query
+ * @param WP_Query $query
+ *
+ * @return bool
  */
-add_action( 'jetpack_search_abort', function( $reason, $data ) {
-//	var_dump($reason,$data);wp_die();
-	$function = false ? 'trigger_error' : 'error_log';
+function should_handle_query( $handle_query, $query ) {
+	//	wp_send_json($query);
 
-	// test if `no_search_results_array` is sent for valid things, like searching for "thisdoesnotexist" - that should return 0 returns
-		// it should _not_ fallback to running the query through WP
-		// it also should _not_ trigger an error log entry or fatal
+	//	var_dump( $query->is_search() && 'wporg-pattern' === $query->get( 'post_type' ) );die();
+	// post_type not set on front end b/c of... rewrite rules? rest_base?
+	// that might be fine, though ��‍
+	// look into later, move on for now
 
-	// this is firing for things it shouldn't? see https://github.com/Automattic/jetpack/issues/18888
+	// probably only do this for pattern searches specifically, maybe on through rest api too
+	// maybe have an init() function that only registers all the callbacks if ^ conditions are met
 
-	// maybe also ignore search_attempted_non_search_query ?
+	// todo why is JS search injected for endpoints like https://api.wordpress.org/patterns/1.0/ ?  it shouldn't be
 
-	call_user_func( $function, 'jetpack_search_abort - cc @iandunn, @tellyworth, @dd32 - ' . $reason .' - ' . wp_json_encode( $data ), E_USER_ERROR );
-		// don't want this to halt execution in prod, but should in sandbox
-		// on prod, want it to show up in dotorg-alerts as a high-priority problem. in dev either slack_dm or just /tmp/php-errors. don't need slack if it halts execution
-
-
-	// log to slack
-	// check error handler, trigger may be enough to send it to slack dm but prob not
-
-//	add a `wporg_proxied()` helper function to .config or mu-plugins if not already exsts
-
-}, 10, 2 );
-
-// todo what should happen when error occurs? fallback to wp_query search? that's probably most graceful, but won't be good results
-// might be better to hard fail to make sure it's noticed/prioritized?
-// maybe error msg in slack should indicate that need to fix soon b/c users getting really bad qsearch results
-
-add_action( 'failed_jetpack_search_query', function( $data ) {
-	// this never fires, see https://github.com/Automattic/jetpack/issues/18888
-
-	$function = WPORG_SANDBOXED ? 'trigger_error' : 'error_log';
-
-	call_user_func( $function, 'failed_jetpack_search_query - cc @iandunn, @tellyworth, @dd32 - ' . wp_json_encode( $data ), E_USER_ERROR );
-	// make DRY w/ search_abort behavior on sandbox vs prod
-
-	// once have this should be able to remove the die() in class.jetpacksearch, and tail the local logfile
-} );
-
+	return $query->is_search() && 'wporg-pattern' === $query->get( 'post_type' );
+}
 
 //add_filter( 'jetpack_search_should_handle_query', function( $handle_query, $query ) {
 ////	if ( $handle_query ) { // todo - add `|| $query doesn't match pattern directory` condition
@@ -131,19 +172,6 @@ add_action( 'failed_jetpack_search_query', function( $data ) {
 // todo need to commit api.w.org http_accept change for ^ to work in prod
 	// same for below maybe? or no b/c not using wp_is_json_request
 
-// document what and why
-add_filter( 'jetpack_search_should_handle_query', function( $handle_query, $query ) {
-//	wp_send_json($query);
-
-//	var_dump( $query->is_search() && 'wporg-pattern' === $query->get( 'post_type' ) );die();
-	// post_type not set on front end b/c of... rewrite rules? rest_base?
-	// that might be fine, though ��‍
-	// look into later, move on for now
-
-
-	return $query->is_search() && 'wporg-pattern' === $query->get( 'post_type' );
-}, 10, 2 );
-
 //add_filter( 'jetpack_search_should_handle_query', '__return_false' ); // set teh default
 //// override the default sometimes
 //// document atht doing it this way b/c there isn't a good way to detect once you're in `jetpack_search_should_handle_query` callback
@@ -163,58 +191,6 @@ add_filter( 'jetpack_search_should_handle_query', function( $handle_query, $quer
 //
 //	return $result; // don't want to change anything, just needed to use a filter b/c there isn't an action that gives access to this data
 //}, 10, 3 );
-
-// need to safelist the CPT for syncing?
-// https://jetpack.com/support/related-posts/customize-related-posts/#related-posts-custom-post-types
-// something else i read made it sound like everything is synced to ES by default, so wait and see if it's needed
-// doesn't seem like it's needed
-
-/*
- * todo tweak query
- *
- * see https://docs.wpvip.com/technical-references/elasticsearch/integrating-jetpack-search/
- *
- *  "query": {
-        "function_score": {
-            "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "multi_match": {
-                                "fields": [
-                                       // change these to just the title, description. anything else? maybe category and keywords?
-                                ],
-                                "query": "button",
-                                "operator": "and"
-                            }
-                        }
-                    ],
-                    "should": [
-                        {
-                            "multi_match": {
-                                "fields": [
-                                    // need to understand diff between this and "must", and type:best_fields, type phrase, etc.
-                                ],
-                                "query": "button",
-                                "operator": "and",
-                                "type": "best_fields"
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "fields": [
-                                    // same as above
-                                ],
-                                "query": "button",
-                                "operator": "and",
-                                "type": "phrase"
-                            }
-                        }
-                    ]
-                }
-            },
- */
-
 
 /**
  * Modify the search query parameters, such as controlling the post_type.
@@ -257,79 +233,106 @@ add_filter( 'jetpack_search_es_query_args', function( $es_query_args, $query ) {
 
 	//		die(__FUNCTION__);
 
-	// todo "Ideally we are using the same meta keys so I can just use the same code and build an index for a new blog i"
-		// look at WPCOM wporg-plugins-index.php#L358
+
+	/*
+	 * todo tweak query
+	 *
+	 * see https://docs.wpvip.com/technical-references/elasticsearch/integrating-jetpack-search/
+	 *
+	 *  "query": {
+	    "function_score": {
+	        "query": {
+	            "bool": {
+	                "must": [
+	                    {
+	                        "multi_match": {
+	                            "fields": [
+	                                   // change these to just the title, description. anything else? maybe category and keywords?
+	                            ],
+	                            "query": "button",
+	                            "operator": "and"
+	                        }
+	                    }
+	                ],
+	                "should": [
+	                    {
+	                        "multi_match": {
+	                            "fields": [
+	                                // need to understand diff between this and "must", and type:best_fields, type phrase, etc.
+	                            ],
+	                            "query": "button",
+	                            "operator": "and",
+	                            "type": "best_fields"
+	                        }
+	                    },
+	                    {
+	                        "multi_match": {
+	                            "fields": [
+	                                // same as above
+	                            ],
+	                            "query": "button",
+	                            "operator": "and",
+	                            "type": "phrase"
+	                        }
+	                    }
+	                ]
+	            }
+	        },
+	*/
 
 	return $es_query_args;
 }, 10, 2 );
 
-
-// maybe use these
-// jetpack_search_should_handle_query
-// do_search() / search()
-// "WP Core doesn't call the set_found_posts and its filters when filtering posts_pre_query like we do, so need to do these manually."
-// jetpack_search_es_wp_query_args
-// store_query_failure / print_query_failure / store_last_query_info
-// get_search_result()
-// add_post_type_aggregation_to_es_query_builder, also tax, add_es_filters, etc
-// info from https://jetpack.com/support/search/?site=wordpress.org::patterns
-
-// make sure all customizations are limited to just pattern directory searches
-
-
-
-/*
- * Make sure the search module is available regardless of Jetpack plan.
- * This works because search indexes were manually created for w.org.
- */
-//function jetpack_get_module( $module, $slug ) {
-//	//var_dump($module, $slug);
-//	//			if ( 'search' === $slug && isset( $module[ 'plan_classes' ] ) && !in_array( 'free', $module[ 'plan_classes' ] ) ) {
-//	//		if ( 'Search' !== $module['name'] ) {
-//	// ^ fragile b/c could be renamed in future?
-//	// $slug could be too, but less likely?
-//
-//	if ( 'search.php' !== basename( $slug ) ) {
-//		return $module;
-//	}
-//
-//	$module['plan_classes'][] = 'free';
-//
-//	//var_dump($module, $slug);
-//	return $module;
-//}
-
-//	add_filter( 'jetpack_get_module', __NAMESPACE__ . '\jetpack_get_module', 10, 2 );
-// this won't be active b/c you're calling it manually?
-
-// document that search indices were manually created
-add_filter( 'pre_option_has_jetpack_search_product', '__return_true' );
-
-
-
-/*
- * need this stuff from alex's pr?
- * jetpack_active_modules
- * option_jetpack_active_modules
- * jetpack_search_es_wp_query_args
- * jetpack_search_abort
- * did_jetpack_search_query
- *
- */
-
-
-
-
 /**
  * Tell Jetpack to sync pattern meta, so it can be indexed by ElasticSearch.
  *
- * @param $post_meta_safelist
+ * @param array $post_meta_safelist
  *
- * @return mixed
+ * @return array
  */
 function sync_pattern_meta( $post_meta_safelist ) {
 	$post_meta_safelist[] = 'wpop_description';
 	$post_meta_safelist[] = 'wpop_viewport_width';
 
 	return $post_meta_safelist;
+}
+
+/**
+ * Log when Jetpack does not run the query.
+ *
+ * @param string $reason
+ * @param array  $data
+ */
+function log_aborted_queries( $reason, $data ) {
+	$function = WPORG_SANDBOXED ? 'trigger_error' : 'error_log';
+
+	call_user_func( $function, 'jetpack_search_abort - cc @iandunn, @tellyworth, @dd32 - ' . $reason .' - ' . wp_json_encode( $data ), E_USER_ERROR );
+		// don't want this to halt execution in prod, but should in sandbox
+		// on prod, want it to show up in dotorg-alerts as a high-priority problem. in dev either slack_dm or just /tmp/php-errors. don't need slack if it halts execution
+
+	// test if `no_search_results_array` is sent for valid things, like searching for "thisdoesnotexist" - that's expected to return 0 results
+		// it should _not_ fallback to running the query through WP
+		// it also should _not_ trigger an error log entry or fatal
+
+	// maybe also ignore search_attempted_non_search_query ?
+
+	// test that works in dev and prod
+}
+
+/**
+ * Log when Jetpack gets an error running the query.
+ *
+ * @param array $data
+ */
+function log_failed_queries( $data ) {
+	// this never fires, see https://github.com/Automattic/jetpack/issues/18888
+
+	$function = WPORG_SANDBOXED ? 'trigger_error' : 'error_log';
+
+	call_user_func( $function, 'failed_jetpack_search_query - cc @iandunn, @tellyworth, @dd32 - ' . wp_json_encode( $data ), E_USER_ERROR );
+	// make DRY w/ search_abort behavior on sandbox vs prod?
+
+	// todo what should happen when error occurs? fallback to wp_query search? that's probably most graceful, but won't be good results
+	// might be better to hard fail to make sure it's noticed/prioritized?
+	// maybe error msg in slack should indicate that need to fix soon b/c users getting really bad qsearch results
 }
