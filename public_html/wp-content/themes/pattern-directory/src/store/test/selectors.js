@@ -2,6 +2,7 @@
  * Internal dependencies
  */
 import apiPatterns from './fixtures/patterns';
+import apiCategories from './fixtures/categories';
 import { getCategories, getPattern, getPatterns, getPatternsByQuery, isLoadingCategories, isLoadingPatternsByQuery } from '../selectors';
 
 describe( 'selectors', () => {
@@ -102,7 +103,7 @@ describe( 'selectors', () => {
 
 		it( 'should get false when state is an array', () => {
 			const categoryState = {
-				categories: [ 1 ],
+				categories: apiCategories,
 			};
 			expect( isLoadingCategories( categoryState ) ).toBeFalsy();
 		} );
@@ -111,10 +112,10 @@ describe( 'selectors', () => {
 	describe( 'getCategories', () => {
 		it( 'should get a list of categories', () => {
 			const categoryState = {
-				categories: [ 1 ],
+				categories: apiCategories,
 			};
 
-			expect( getCategories( categoryState ) ).toHaveLength( categoryState.categories.length );
+			expect( getCategories( categoryState ) ).toHaveLength( apiCategories.length );
 		} );
 	} );
 } );
