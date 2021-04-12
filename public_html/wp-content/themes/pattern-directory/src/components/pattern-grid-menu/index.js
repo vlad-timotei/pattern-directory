@@ -40,12 +40,12 @@ const PatternGridMenu = () => {
 			<nav className="pattern-grid-menu">
 				<CategoryMenu
 					path={ path }
+					basename="" // Update if served in subfolder
 					options={
 						categories
 							? categories.map( ( record ) => {
 								return {
-									// TODO: This url is temporary and won't use the # symbol
-									value: `#/pattern-categories/${ record.slug }`,
+									value: record.link,
 									label: record.name,
 								};
 							} )
