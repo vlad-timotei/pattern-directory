@@ -15,7 +15,7 @@ use const WordPressdotorg\Pattern_Directory\Pattern_Post_Type\POST_TYPE;
 
 const AUTOSAVE_INTERVAL = 30;
 const QUERY_VAR = 'edit-pattern';
-
+const PATTERN_ID_VAR = 'patternId';
 /**
  * Check the conditions of the page to determine if the editor should load.
  * - It should be a single pattern page.
@@ -29,6 +29,7 @@ function should_load_creator() {
 	$is_editor = $wp_query->is_singular( POST_TYPE ) && false !== $wp_query->get( QUERY_VAR, false );
 	// @todo Should this be a page template? Something else?
 	$is_new = is_page( 'new-pattern' );
+
 	return $is_editor || $is_new;
 }
 
@@ -40,6 +41,7 @@ function should_load_creator() {
  */
 function add_query_var( $query_vars ) {
 	$query_vars[] = QUERY_VAR;
+	$query_vars[] = PATTERN_ID_VAR;
 	return $query_vars;
 }
 add_filter( 'query_vars', __NAMESPACE__ . '\add_query_var' );
@@ -85,6 +87,12 @@ function enqueue_assets() {
 	} else {
 		$post    = get_default_post_to_edit( POST_TYPE, true );
 		$post_id = $post->ID;
+	}
+
+	// Change the post ID when editing a pattern
+	// TO DO: We should also make sure the user can edit the pattern?
+	if ( should_load_creator() && get_query_var( PATTERN_ID_VAR ) ) {
+		$post_id = get_query_var( PATTERN_ID_VAR );
 	}
 
 	$settings = array(
@@ -173,3 +181,14 @@ function inject_editor_template( $template ) {
 	return $template;
 }
 add_filter( 'template_include', __NAMESPACE__ . '\inject_editor_template' );
+
+function rewrite_for_pattern_editing(){
+	add_rewrite_rule( '^new-pattern/(\d+)/edit', 'index.php?pagename=new-pattern&' . PATTERN_ID_VAR . '=$matches[1]', 'top' );
+
+	if ( isset( $_GET['post'] ) && isset( $_GET['action'] ) && 'edit' === $_GET['action'] ) {
+	   wp_safe_redirect( home_url( '/new-pattern/' . absint( $_GET['post'] ) . '/edit' ) );
+	   exit;
+	}
+}
+
+add_action( 'init', __NAMESPACE__ . '\rewrite_for_pattern_editing' );
